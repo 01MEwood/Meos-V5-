@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MEOS 4.0 – Werkstatt Dashboard</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#0f172a; color:#e2e8f0; overflow:hidden; }
+
+  /* Login */
+  .login-overlay { position:fixed; inset:0; background:#0f172a; display:flex; align-items:center; justify-content:center; z-index:9999; }
+  .login-box { background:#1e293b; border:1px solid #334155; border-radius:16px; padding:32px; width:340px; }
+  .login-box h2 { text-align:center; font-size:20px; margin-bottom:4px; color:#fff; }
+  .login-box .sub { text-align:center; font-size:12px; color:#94a3b8; margin-bottom:24px; }
+  .login-box input { width:100%; padding:10px 14px; border:1px solid #334155; border-radius:8px; background:#0f172a; color:#e2e8f0; font-size:14px; margin-bottom:12px; outline:none; }
+  .login-box input:focus { border-color:#e87b1c; }
+  .login-box button { width:100%; padding:10px; border:none; border-radius:8px; background:#e87b1c; color:#fff; font-size:14px; font-weight:600; cursor:pointer; }
+  .login-box button:hover { background:#d06a10; }
+  .login-box .error { color:#ef4444; font-size:12px; text-align:center; margin-bottom:8px; }
+
+  /* Layout */
+  .header { background:linear-gradient(135deg,#1e293b,#0f172a); padding:10px 24px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #334155; height:54px; }
+  .header h1 { font-size:18px; font-weight:800; color:#fff; }
+  .clock { font-size:28px; font-weight:800; font-family:monospace; color:#e87b1c; }
+  .date-info { font-size:12px; color:#94a3b8; }
+  .tabs { display:flex; gap:4px; padding:6px 24px; background:#1e293b; border-bottom:1px solid #334155; height:38px; align-items:center; }
+  .tab { padding:6px 16px; border-radius:8px; border:none; font-size:13px; font-weight:600; cursor:pointer; background:transparent; color:#94a3b8; transition:all .15s; }
+  .tab:hover { color:#e2e8f0; }
+  .tab.active { background:#e87b1c; color:#fff; }
+
+  /* Pipeline */
+  .phase-col { background:#1e293b; border-radius:12px; border:1px solid #334155; display:flex; flex-direction:column; min-width:0; overflow:hidden; flex:1; }
+  .phase-header { padding:10px 12px; border-bottom:1px solid #334155; text-align:center; flex-shrink:0; }
+  .phase-title { font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
+  .phase-count { font-size:26px; font-weight:800; margin-top:2px; }
+  .phase-body { padding:8px; flex:1; overflow-y:auto; overflow-x:hidden; }
+  .phase-body::-webkit-scrollbar { width:4px; }
+  .phase-body::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+
+  .proj-card { background:#0f172a; border:1px solid #334155; border-radius:10px; padding:10px; margin-bottom:6px; }
+  .proj-id { font-size:11px; font-weight:700; color:#e87b1c; }
+  .proj-name { font-size:13px; font-weight:600; color:#e2e8f0; margin-top:2px; line-height:1.3; }
+  .proj-customer { font-size:11px; color:#94a3b8; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .proj-date { font-size:10px; color:#64748b; margin-top:3px; }
+  .tacho { display:flex; align-items:center; justify-content:center; margin-top:6px; }
+  .tacho svg { width:60px; height:36px; }
+
+  /* Calendar */
+  .cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .cal-header { font-size:11px; font-weight:700; color:#64748b; text-align:center; padding:4px 0; text-transform:uppercase; }
+  .cal-day { background:#1e293b; border:1px solid #334155; border-radius:6px; min-height:68px; padding:5px; }
+  .cal-day.today { border:2px solid #e87b1c; box-shadow:0 0 8px rgba(232,123,28,0.3); }
+  .cal-day.past { opacity:0.5; }
+  .cal-day.weekend { background:#181d2a; }
+  .cal-day.holiday { background:#2d1b1b; border-color:#7f1d1d; }
+  .cal-day.ferien { background:#1b2d1f; border-color:#14532d; }
+  .cal-day-num { font-size:14px; font-weight:700; color:#e2e8f0; }
+  .cal-day.today .cal-day-num { color:#e87b1c; }
+  .cal-event { font-size:9px; padding:2px 4px; border-radius:3px; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .cal-holiday-label { font-size:8px; color:#ef4444; font-weight:600; margin-top:1px; }
+  .cal-ferien-label { font-size:8px; color:#4ade80; font-weight:600; margin-top:1px; }
+  .week-label { font-size:11px; font-weight:700; color:#64748b; padding:8px 0 4px; }
+  .week-label.current { color:#e87b1c; }
+
+  /* Compact mode for "Beide" */
+  .compact .cal-day { min-height:48px; padding:3px; }
+  .compact .cal-day-num { font-size:12px; }
+  .compact .cal-event { font-size:8px; padding:1px 3px; }
+  .compact .week-label { font-size:10px; padding:5px 0 2px; }
+  .compact .cal-header { font-size:10px; padding:2px 0; }
+
+  .refresh-dot { width:6px; height:6px; border-radius:50%; background:#10b981; display:inline-block; margin-right:4px; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <h2>🏭 Werkstatt Dashboard</h2>
+    <div class="sub">Bitte einloggen</div>
+    <div class="error" id="loginError" style="display:none"></div>
+    <input type="email" id="loginEmail" placeholder="E-Mail" autocomplete="email"/>
+    <input type="password" id="loginPw" placeholder="Passwort" autocomplete="current-password"/>
+    <button onclick="doLogin()">Anmelden</button>
+  </div>
+</div>
+
+<div id="dashboard" style="display:none">
+  <div class="header">
+    <div>
+      <h1>🏭 Werkstatt Dashboard</h1>
+      <div class="date-info"><span class="refresh-dot"></span>Live · Auto-Refresh 60s</div>
+    </div>
+    <div style="text-align:right">
+      <div class="clock" id="clock">--:--</div>
+      <div class="date-info" id="dateInfo">--</div>
+    </div>
+  </div>
+  <div class="tabs" id="tabBar">
+    <button class="tab" data-v="pipeline" onclick="switchView('pipeline')">📊 Pipeline</button>
+    <button class="tab" data-v="kalender" onclick="switchView('kalender')">📅 Kalender</button>
+    <button class="tab active" data-v="beide" onclick="switchView('beide')">📊+📅 Beide</button>
+  </div>
+  <div id="content"></div>
+</div>
+
+<script>
+let token = sessionStorage.getItem('werkstatt_token') || '';
+let currentView = 'beide';
+let projects = [];
+
+const W_PHASES = ['AV_PLANUNG','FERTIGUNG','MONTAGE','ABNAHME'];
+const W_LABELS = {AV_PLANUNG:'AV / Planung',FERTIGUNG:'Fertigung',MONTAGE:'Montage',ABNAHME:'Abnahme'};
+const W_COLORS = {AV_PLANUNG:'#3b82f6',FERTIGUNG:'#f59e0b',MONTAGE:'#10b981',ABNAHME:'#14b8a6'};
+const FEIERTAGE_BW = {
+  '2026-01-01':'Neujahr','2026-01-06':'Hl. Drei Könige','2026-04-03':'Karfreitag','2026-04-06':'Ostermontag',
+  '2026-05-01':'Tag der Arbeit','2026-05-14':'Christi Himmelfahrt','2026-05-25':'Pfingstmontag',
+  '2026-06-04':'Fronleichnam','2026-10-03':'Tag d. Dt. Einheit','2026-11-01':'Allerheiligen',
+  '2026-12-25':'1. Weihnachtstag','2026-12-26':'2. Weihnachtstag'
+};
+const SCHULFERIEN_BW = [
+  {von:'2026-01-01',bis:'2026-01-06',name:'Weihnachtsferien'},
+  {von:'2026-03-30',bis:'2026-04-11',name:'Osterferien'},
+  {von:'2026-05-26',bis:'2026-06-06',name:'Pfingstferien'},
+  {von:'2026-07-30',bis:'2026-09-12',name:'Sommerferien'},
+  {von:'2026-10-26',bis:'2026-10-31',name:'Herbstferien'},
+  {von:'2026-12-23',bis:'2027-01-06',name:'Weihnachtsferien'}
+];
+function isSchulferien(iso) { for (const f of SCHULFERIEN_BW) { if (iso>=f.von&&iso<=f.bis) return f.name; } return null; }
+
+// ── Auth ──
+async function doLogin() {
+  const email=document.getElementById('loginEmail').value, pw=document.getElementById('loginPw').value;
+  const err=document.getElementById('loginError'); err.style.display='none';
+  try {
+    const r=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password:pw})});
+    const d=await r.json(); if(!r.ok) throw new Error(d.error||'Login fehlgeschlagen');
+    token=d.token; sessionStorage.setItem('werkstatt_token',token); showDashboard();
+  } catch(e) { err.textContent=e.message; err.style.display='block'; }
+}
+document.getElementById('loginPw').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
+document.getElementById('loginEmail').addEventListener('keydown',e=>{if(e.key==='Enter')document.getElementById('loginPw').focus()});
+
+function showDashboard() {
+  document.getElementById('loginOverlay').style.display='none';
+  document.getElementById('dashboard').style.display='block';
+  loadData();
+}
+if(token){fetch('/api/auth/me',{headers:{Authorization:'Bearer '+token}}).then(r=>{if(r.ok)showDashboard();else{token='';sessionStorage.removeItem('werkstatt_token');}}).catch(()=>{});}
+
+// ── Data ──
+async function loadData() {
+  try {
+    const r=await fetch('/api/projects?status=AKTIV&limit=200',{headers:{Authorization:'Bearer '+token}});
+    if(r.status===401){token='';sessionStorage.removeItem('werkstatt_token');location.reload();return;}
+    const d=await r.json(); projects=(d.data||d).filter(p=>W_PHASES.includes(p.phase)); render();
+  } catch(e){console.error(e);}
+}
+setInterval(loadData,60000);
+
+// ── Clock ──
+function updateClock(){const n=new Date();document.getElementById('clock').textContent=n.toLocaleTimeString('de-DE');document.getElementById('dateInfo').textContent=n.toLocaleDateString('de-DE',{weekday:'long',day:'numeric',month:'long',year:'numeric'});}
+setInterval(updateClock,1000); updateClock();
+
+// ── View ──
+function switchView(v) {
+  currentView=v;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('active',t.dataset.v===v));
+  render();
+}
+
+const CH = 'calc(100vh - 92px)'; // content height
+function render() {
+  const c=document.getElementById('content'); if(!c) return;
+  if (currentView==='pipeline') {
+    c.innerHTML=`<div style="display:flex;gap:10px;padding:12px;height:${CH}">${renderPipeline()}</div>`;
+  } else if (currentView==='kalender') {
+    c.innerHTML=`<div style="padding:16px 24px;height:${CH};overflow-y:auto">${renderCalendar()}</div>`;
+  } else {
+    c.innerHTML=`<div style="display:flex;height:${CH}">
+      <div style="flex:3;display:flex;gap:8px;padding:10px;min-width:0;overflow:hidden">${renderPipeline()}</div>
+      <div style="flex:2;overflow-y:auto;padding:10px 12px;border-left:1px solid #334155"><div class="compact">${renderCalendar()}</div></div>
+    </div>`;
+  }
+}
+
+// ── Helpers ──
+function safeDate(d){if(!d)return'';return typeof d==='string'?d.substring(0,10):d.toISOString().substring(0,10);}
+function todayISO(){const t=new Date();return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');}
+function dateToISO(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
+function getKW(d){const u=new Date(Date.UTC(d.getFullYear(),d.getMonth(),d.getDate()));u.setUTCDate(u.getUTCDate()+4-(u.getUTCDay()||7));return Math.ceil(((u-new Date(Date.UTC(u.getUTCFullYear(),0,1)))/86400000+1)/7);}
+
+// ── Tacho ──
+function tachoSvg(pct){
+  const cl=Math.min(pct,120),ang=-90+(cl/120)*180;
+  let col='#10b981';if(pct>85)col='#ef4444';else if(pct>60)col='#f59e0b';
+  const r=28,cx=35,cy=35;
+  function a(s,e,c,w){const sr=(s-90)*Math.PI/180,er=(e-90)*Math.PI/180;return`<path d="M${cx+r*Math.cos(sr)},${cy+r*Math.sin(sr)} A${r},${r} 0 ${e-s>180?1:0} 1 ${cx+r*Math.cos(er)},${cy+r*Math.sin(er)}" fill="none" stroke="${c}" stroke-width="${w}" stroke-linecap="round"/>`;}
+  const na=(ang-90)*Math.PI/180;
+  return`<svg viewBox="0 0 70 42">${a(-90,-30,'#10b981',5)}${a(-30,30,'#f59e0b',5)}${a(30,90,'#ef4444',5)}<line x1="${cx}" y1="${cy}" x2="${cx+(r-6)*Math.cos(na)}" y2="${cy+(r-6)*Math.sin(na)}" stroke="${col}" stroke-width="2.5" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="3" fill="${col}"/><text x="${cx}" y="${cy+12}" text-anchor="middle" font-size="8" font-weight="700" fill="${col}">${pct}%</text></svg>`;
+}
+
+// ── Pipeline ──
+function renderPipeline() {
+  const g={}; W_PHASES.forEach(p=>g[p]=[]);
+  projects.forEach(p=>{if(g[p.phase])g[p.phase].push(p);});
+  return W_PHASES.map(ph=>{
+    const items=g[ph],col=W_COLORS[ph];
+    return`<div class="phase-col"><div class="phase-header"><div class="phase-title" style="color:${col}">${W_LABELS[ph]}</div><div class="phase-count" style="color:${col}">${items.length}</div></div><div class="phase-body">${items.map(p=>{
+      const pct=p.budgetHours>0?Math.round((p.actualHours||0)/p.budgetHours*100):0;
+      const md=p.montageDate?safeDate(p.montageDate):'';
+      return`<div class="proj-card"><div class="proj-id">${p.id}</div><div class="proj-name">${p.name||''}</div><div class="proj-customer">${p.customer?p.customer.firstName+' '+p.customer.lastName:''}</div>${md?'<div class="proj-date">🔧 '+md.split('-').reverse().join('.')+'</div>':''}${p.budgetHours>0?'<div class="tacho">'+tachoSvg(pct)+'</div>':''}</div>`;
+    }).join('')}${items.length===0?'<div style="text-align:center;padding:30px;color:#475569;font-size:12px">Keine Projekte</div>':''}</div></div>`;
+  }).join('');
+}
+
+// ── Calendar ──
+function renderCalendar() {
+  const today=new Date(), dow=today.getDay(), moff=dow===0?-6:1-dow;
+  const ws=new Date(today); ws.setDate(today.getDate()+moff); ws.setHours(0,0,0,0);
+  const ev={};
+  projects.forEach(p=>{
+    if(p.montageDate){const d=safeDate(p.montageDate);if(d){if(!ev[d])ev[d]=[];ev[d].push({l:'🔧 '+p.id+' '+(p.name||'').substring(0,14),c:'#10b981'});}}
+    if(p.aufmassDate){const d=safeDate(p.aufmassDate);if(d){if(!ev[d])ev[d]=[];ev[d].push({l:'📐 '+p.id,c:'#06b6d4'});}}
+  });
+  const DAYS=['MO','DI','MI','DO','FR','SA','SO'];
+  let h='<div class="cal-grid">'+DAYS.map(d=>'<div class="cal-header">'+d+'</div>').join('')+'</div>';
+  for(let w=0;w<3;w++){
+    const s=new Date(ws); s.setDate(ws.getDate()+w*7);
+    const e=new Date(s.getTime()+6*86400000), kw=getKW(s);
+    const lb=w===0?'Aktuelle Woche':w===1?'Nächste Woche':'Übernächste Woche';
+    h+=`<div class="week-label ${w===0?'current':''}">${lb} · KW ${kw} · ${s.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})} – ${e.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}</div><div class="cal-grid">`;
+    for(let d=0;d<7;d++){
+      const dt=new Date(s); dt.setDate(s.getDate()+d);
+      const iso=dateToISO(dt), isT=iso===todayISO(), isP=dt<today&&!isT, isW=d>=5;
+      const hol=FEIERTAGE_BW[iso], fer=isSchulferien(iso), evts=ev[iso]||[];
+      let cl='cal-day'; if(isT)cl+=' today'; if(isP)cl+=' past'; if(isW)cl+=' weekend'; if(hol)cl+=' holiday'; if(fer&&!hol)cl+=' ferien';
+      h+=`<div class="${cl}"><div class="cal-day-num">${dt.getDate()}</div>${hol?'<div class="cal-holiday-label">'+hol+'</div>':''}${fer&&!hol?'<div class="cal-ferien-label">'+fer+'</div>':''}${evts.map(x=>'<div class="cal-event" style="background:'+x.c+'22;color:'+x.c+';border:1px solid '+x.c+'44">'+x.l+'</div>').join('')}</div>`;
+    }
+    h+='</div>';
+  }
+  return h;
+}
+</script>
+</body>
+</html>

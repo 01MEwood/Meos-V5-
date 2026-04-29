@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HPM – Homag Production Manager | MEOS 4.0</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Inter',system-ui,sans-serif; background:#0f172a; color:#e2e8f0; min-height:100vh; }
+  .header { background:linear-gradient(135deg,#7c3aed,#4f46e5); padding:20px 24px; display:flex; justify-content:space-between; align-items:center; }
+  .header h1 { font-size:22px; font-weight:800; color:#fff; }
+  .header .badge { background:rgba(255,255,255,0.2); color:#fff; padding:4px 12px; border-radius:8px; font-size:12px; font-weight:600; }
+  .content { padding:24px; max-width:1200px; margin:0 auto; }
+  .card { background:#1e293b; border-radius:12px; border:1px solid #334155; padding:20px; margin-bottom:16px; }
+  .card h2 { font-size:16px; font-weight:700; color:#fff; margin-bottom:12px; }
+  .card h3 { font-size:13px; font-weight:600; color:#94a3b8; margin-bottom:8px; text-transform:uppercase; letter-spacing:1px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .grid3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .info-row { display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid #334155; }
+  .info-row .label { font-size:13px; color:#64748b; }
+  .info-row .value { font-size:13px; font-weight:600; color:#e2e8f0; }
+  .step { display:flex; align-items:center; gap:12px; padding:12px; background:#0f172a; border-radius:8px; margin-bottom:8px; cursor:pointer; transition:all .2s; }
+  .step:hover { background:#1a2744; }
+  .step.done { opacity:0.5; }
+  .step .num { width:32px; height:32px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:14px; font-weight:800; }
+  .step .num.pending { background:#334155; color:#94a3b8; }
+  .step .num.active { background:#7c3aed; color:#fff; }
+  .step .num.done { background:#10b981; color:#fff; }
+  .btn { padding:10px 20px; border:none; border-radius:8px; font-size:14px; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:8px; }
+  .btn-primary { background:#7c3aed; color:#fff; }
+  .btn-primary:hover { background:#6d28d9; }
+  .btn-secondary { background:#334155; color:#e2e8f0; }
+  .btn-success { background:#10b981; color:#fff; }
+  .btn-danger { background:#ef4444; color:#fff; }
+  textarea, input, select { background:#0f172a; border:1px solid #334155; color:#e2e8f0; padding:8px 12px; border-radius:8px; font-size:14px; font-family:inherit; width:100%; }
+  textarea:focus, input:focus { border-color:#7c3aed; outline:none; }
+  label { display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:500; }
+  .status-bar { display:flex; gap:4px; margin:16px 0; }
+  .status-bar .seg { flex:1; height:8px; border-radius:4px; background:#334155; transition:all .3s; }
+  .status-bar .seg.done { background:#10b981; }
+  .status-bar .seg.active { background:#7c3aed; }
+  .note { font-size:12px; color:#64748b; margin-top:4px; }
+  @media (max-width:768px) {
+    .grid2, .grid3 { grid-template-columns:1fr; }
+    .header { flex-direction:column; gap:8px; }
+  }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>⚙️ HPM – Homag Production Manager</h1>
+    <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:4px">CNC-Planung & Materialvorbereitung</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="badge" id="projectBadge">–</span>
+    <span class="badge" id="kundeBadge">–</span>
+    <button class="btn btn-secondary" onclick="window.close()">✕ Schließen</button>
+  </div>
+</div>
+
+<div class="content">
+  <!-- Status -->
+  <div class="card">
+    <h2>📊 Fertigungsvorbereitung</h2>
+    <div class="status-bar" id="statusBar">
+      <div class="seg" data-step="1"></div>
+      <div class="seg" data-step="2"></div>
+      <div class="seg" data-step="3"></div>
+      <div class="seg" data-step="4"></div>
+      <div class="seg" data-step="5"></div>
+      <div class="seg" data-step="6"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:11px;color:#64748b">
+      <span>Stückliste</span>
+      <span>CNC-Daten</span>
+      <span>Zuschnitt</span>
+      <span>Kanten</span>
+      <span>Beschläge</span>
+      <span>Übergabe</span>
+    </div>
+  </div>
+
+  <div class="grid2">
+    <!-- Arbeitsschritte -->
+    <div>
+      <div class="card">
+        <h2>📋 Arbeitsschritte bis Werkstatt</h2>
+        <div id="steps">
+          <div class="step" data-step="1" onclick="toggleStep(this)">
+            <div class="num pending">1</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">Stückliste erstellen</div>
+              <div class="note">Alle Teile mit Maßen, Material, Kanten</div>
+            </div>
+          </div>
+          <div class="step" data-step="2" onclick="toggleStep(this)">
+            <div class="num pending">2</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">CNC-Programme erstellen</div>
+              <div class="note">HPM / woodWOP / CAM-Daten generieren</div>
+            </div>
+          </div>
+          <div class="step" data-step="3" onclick="toggleStep(this)">
+            <div class="num pending">3</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">Zuschnittoptimierung</div>
+              <div class="note">Plattenaufteilung, Verschnitt minimieren</div>
+            </div>
+          </div>
+          <div class="step" data-step="4" onclick="toggleStep(this)">
+            <div class="num pending">4</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">Kantenband bestellen</div>
+              <div class="note">Farbe, Stärke, Menge prüfen</div>
+            </div>
+          </div>
+          <div class="step" data-step="5" onclick="toggleStep(this)">
+            <div class="num pending">5</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">Beschläge & Zubehör</div>
+              <div class="note">Scharniere, Auszüge, Griffe kommissionieren</div>
+            </div>
+          </div>
+          <div class="step" data-step="6" onclick="toggleStep(this)">
+            <div class="num pending">6</div>
+            <div>
+              <div style="font-size:14px;font-weight:600">Übergabe an Werkstatt</div>
+              <div class="note">Material + Unterlagen übergeben, Freigabe erteilt</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Notizen & Material -->
+    <div>
+      <div class="card">
+        <h2>📝 CNC-Notizen</h2>
+        <textarea id="cncNotes" rows="4" placeholder="Besonderheiten, Fräsprogramme, Spezialteile..."></textarea>
+        <div style="margin-top:8px">
+          <label>Anzahl CNC-Teile</label>
+          <input type="number" id="cncTeile" placeholder="z.B. 24">
+        </div>
+        <div style="margin-top:8px">
+          <label>Geschätzte CNC-Zeit (Minuten)</label>
+          <input type="number" id="cncZeit" placeholder="z.B. 180">
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🪵 Material-Check</h2>
+        <div id="materialCheck">
+          <div class="info-row"><span class="label">Plattenmaterial</span><span class="value" id="matKorpus">–</span></div>
+          <div class="info-row"><span class="label">Front</span><span class="value" id="matFront">–</span></div>
+          <div class="info-row"><span class="label">Kante</span><span class="value" id="matKante">–</span></div>
+          <div class="info-row"><span class="label">Arbeitsplatte</span><span class="value" id="matAP">–</span></div>
+          <div class="info-row"><span class="label">Beschläge</span><span class="value" id="matBeschl">–</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>🔗 Externe Programme</h2>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <button class="btn btn-primary" onclick="alert('Homag Production Manager wird gestartet...\n\nBitte stellen Sie sicher, dass HPM auf diesem Rechner installiert ist.\n\nAlternativ: CNC-Daten manuell über USB übertragen.')">
+            ⚙️ HPM öffnen (lokal)
+          </button>
+          <button class="btn btn-secondary" onclick="alert('woodWOP wird gestartet...')">
+            🔧 woodWOP öffnen
+          </button>
+          <button class="btn btn-secondary" onclick="alert('Cutting Optimizer wird gestartet...')">
+            📐 Zuschnittoptimierung
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Übergabe Button -->
+  <div class="card" style="text-align:center;padding:24px">
+    <button class="btn btn-success" id="uebergabeBtn" onclick="uebergabeWerkstatt()" style="font-size:16px;padding:14px 32px" disabled>
+      ✅ Übergabe an Werkstatt abschließen
+    </button>
+    <div class="note" style="margin-top:8px">Alle 6 Schritte müssen abgehakt sein</div>
+  </div>
+</div>
+
+<script>
+// URL params lesen
+const params = new URLSearchParams(window.location.search);
+const projectId = params.get('project') || '–';
+const kunde = params.get('kunde') || '–';
+const name = params.get('name') || '–';
+
+document.getElementById('projectBadge').textContent = projectId;
+document.getElementById('kundeBadge').textContent = kunde;
+
+// State
+let completedSteps = new Set();
+
+// Load from project data if available
+async function loadProjectData() {
+  try {
+    const token = localStorage.getItem('meos_token') || sessionStorage.getItem('meos_token');
+    if (!token || projectId === '–') return;
+    const r = await fetch(`/api/projects/${projectId}`, { headers: { Authorization: `Bearer ${token}` } });
+    if (r.ok) {
+      const p = await r.json();
+      if (p.materialKorpus) document.getElementById('matKorpus').textContent = p.materialKorpus;
+      if (p.materialFront) document.getElementById('matFront').textContent = p.materialFront;
+      if (p.kanteFront) document.getElementById('matKante').textContent = p.kanteFront;
+      if (p.arbeitsplatte) document.getElementById('matAP').textContent = p.arbeitsplatte;
+      if (p.beschlaege) document.getElementById('matBeschl').textContent = p.beschlaege;
+    }
+  } catch (e) { console.log('Could not load project data'); }
+}
+loadProjectData();
+
+function toggleStep(el) {
+  const step = parseInt(el.dataset.step);
+  if (completedSteps.has(step)) {
+    completedSteps.delete(step);
+    el.classList.remove('done');
+    el.querySelector('.num').className = 'num pending';
+  } else {
+    completedSteps.add(step);
+    el.classList.add('done');
+    el.querySelector('.num').className = 'num done';
+    el.querySelector('.num').textContent = '✓';
+  }
+  updateStatus();
+}
+
+function updateStatus() {
+  const segments = document.querySelectorAll('.status-bar .seg');
+  segments.forEach(seg => {
+    const step = parseInt(seg.dataset.step);
+    if (completedSteps.has(step)) {
+      seg.className = 'seg done';
+    } else {
+      seg.className = 'seg';
+    }
+  });
+  document.getElementById('uebergabeBtn').disabled = completedSteps.size < 6;
+}
+
+async function uebergabeWerkstatt() {
+  if (!confirm('Übergabe an Werkstatt abschließen?\n\nDas Projekt wird in die Phase FERTIGUNG verschoben.')) return;
+  try {
+    const token = localStorage.getItem('meos_token') || sessionStorage.getItem('meos_token');
+    if (token && projectId !== '–') {
+      await fetch(`/api/projects/${projectId}/phase`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ toPhase: 'FERTIGUNG', comment: 'CNC/HPM abgeschlossen – Übergabe an Werkstatt' })
+      });
+    }
+    alert('✅ Übergabe erfolgreich! Projekt wurde in Phase FERTIGUNG verschoben.');
+    window.close();
+  } catch (e) {
+    alert('Fehler: ' + e.message);
+  }
+}
+</script>
+</body>
+</html>

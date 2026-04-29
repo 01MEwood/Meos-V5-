@@ -1,0 +1,47 @@
+services:
+  db:
+    image: mysql:8.0
+    container_name: meos-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: meos4
+      MYSQL_USER: meos
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - meos-db-data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meos:
+    image: mariomeosv40/meos:latest
+    container_name: meos-app
+    init: true
+    pull_policy: always
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${PORT}:${PORT}"
+    environment:
+      DATABASE_URL: "mysql://meos:${DB_PASSWORD}@db:3306/meos4"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: 7d
+      PORT: ${PORT}
+      NODE_ENV: production
+      FLUENTCRM_URL: ${FLUENTCRM_URL}
+      FLUENTCRM_API_USER: ${FLUENTCRM_API_USER}
+      FLUENTCRM_API_PASS: ${FLUENTCRM_API_PASS}
+    restart: unless-stopped
+    volumes:
+      - meos-uploads:/app/uploads
+
+volumes:
+  meos-db-data:
+    driver: local
+  meos-uploads:
+    driver: local

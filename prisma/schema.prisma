@@ -1,0 +1,590 @@
+// MEOS 4.0 - Database Schema
+// Schreinerhelden Industrial Operating System
+// MySQL 8.0 @ hosting-data.io
+// Reventix: Nur Action URLs
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// AUTH & USERS
+// ==========================================
+
+enum UserRole {
+  ADMIN
+  BUERO
+  HR
+  MARKETING
+  WERKSTATT
+  MONTAGE
+  STEMPELN
+}
+
+model User {
+  id          String    @id @default(cuid())
+  email       String    @unique
+  name        String
+  password    String
+  pin         String?
+  role        UserRole
+  active      Boolean   @default(true)
+  phone       String?
+  mobile      String?
+  avatarUrl   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  timeEntries     TimeEntry[]
+  notes           Note[]
+  documents       Document[]
+  phaseChanges    PhaseLog[]
+  montageReports  MontageReport[]
+  callNotes       CallNote[]
+  payments        Payment[]
+
+  @@index([phone])
+  @@index([mobile])
+  @@map("users")
+}
+
+// ==========================================
+// CUSTOMERS (FluentCRM Sync + Manual)
+// ==========================================
+
+enum CustomerSource {
+  FLUENTCRM
+  MANUAL
+}
+
+model Customer {
+  id            String          @id @default(cuid())
+  fluentcrmId   Int?            @unique
+  email         String?
+  firstName     String
+  lastName      String
+  company       String?
+  phone         String?
+  mobile        String?
+  street        String?
+  city          String?
+  zip           String?
+  country       String?         @default("DE")
+  // Partner
+  partnerName   String?
+  partnerPhone  String?
+  // Zusatzinfo
+  info          String?         @db.Text
+  tags          Json?           // ["Architekt", "Bestandskunde"]
+  lists         Json?           // ["Newsletter", "Kunden"]
+  source        CustomerSource  @default(MANUAL)
+  status        String?         @default("active")
+  customFields  Json?
+  lastSyncAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  projects      Project[]
+  notes         Note[]
+  calls         CallLog[]
+
+  @@index([phone])
+  @@index([mobile])
+  @@index([partnerPhone])
+  @@index([lastName, firstName])
+  @@map("customers")
+}
+
+// ==========================================
+// PROJECTS & PHASES
+// Der Schreinerhelden-Ablauf (Schritte 4-12)
+// ==========================================
+
+enum ProjectPhase {
+  ANGEBOT
+  AUFTRAG
+  AUFMASS
+  AV_PLANUNG
+  FERTIGUNG
+  MONTAGE
+  ABNAHME
+  RECHNUNG
+  ZAHLUNG
+}
+
+enum ProjectStatus {
+  AKTIV
+  PAUSIERT
+  STORNIERT
+  ABGESCHLOSSEN
+}
+
+model Project {
+  id            String          @id  // P26-001
+  customerId    String
+  name          String
+  description   String?         @db.Text
+  phase         ProjectPhase    @default(ANGEBOT)
+  status        ProjectStatus   @default(AKTIV)
+  budgetHours   Float           @default(0)
+  actualHours   Float           @default(0)
+  startDate     DateTime?
+  dueDate       DateTime?
+  montageDate   DateTime?
+  completedAt   DateTime?
+  // Finanzen
+  offerAmount   Float?
+  depositAmount Float?
+  depositPaidAt DateTime?
+  invoiceAmount Float?
+  invoiceSentAt DateTime?
+  paidAt        DateTime?
+  // Planer / Zuständig
+  planer        String?
+  zustaendig    String?
+  // Aufmaß
+  aufmassDate   DateTime?
+  aufmassInfo   String?         @db.Text   // Infos zum Weg/Hauseingang
+  kmEinfach     Float?                     // Kilometer einfach
+  // Material & Konstruktion (Gelber Zettel)
+  materialKorpus    String?
+  materialFront     String?
+  kanteFront        String?     @default("1mm")
+  arbeitsplatte     String?
+  weiteresMaterial  String?     @db.Text
+  aufhaengung       String?
+  griffloesung      String?
+  aussenseiteRechts String?
+  aussenseiteLinks  String?
+  fugenbild         String?     @default("4mm")
+  sockel            String?
+  passleiste        String?     @db.Text   // oben/rechts/links
+  oberkante         String?                // Oberkante AP/Waschtisch
+  oberflaeche       String?                // Lack, Beize, Öl
+  beschlaege        String?     @db.Text   // Beschläge/Zubehör
+  spiegelGlas       String?
+  kleiderlift       String?
+  klappen           String?
+  ledLichtfarbe     String?
+  ledSchalter       String?
+  kabeldurchlass    String?
+  garderobenhaken   String?
+  elektrogeraete    String?     @db.Text
+  sonstigeDetails   String?     @db.Text
+  // Kalkulation
+  rsoFaktor         Float?      @default(2.7)
+  stundenAufmass    Float?
+  stundenWerkstatt  Float?
+  stundenMontage    Float?
+  stundenAzubi      Float?
+  // Erstgespräch
+  erstEindruck      String?     // offen/zurückhaltend/reserviert
+  gespraechsort     String?     // Zuhause/Geschäft/Online
+  geraet            String?     // Rechner/Laptop/Handy
+  // Timestamps
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  customer        Customer        @relation(fields: [customerId], references: [id])
+  timeEntries     TimeEntry[]
+  phaseLogs       PhaseLog[]
+  documents       Document[]
+  notes           Note[]
+  montageReports  MontageReport[]
+  payments        Payment[]
+  calcs           ProjectCalc[]
+
+  @@index([customerId])
+  @@index([phase])
+  @@index([status])
+  @@map("projects")
+}
+
+model Payment {
+  id          String    @id @default(cuid())
+  projectId   String
+  type        String    // ABSCHLAG, SCHLUSSRECHNUNG, MAHNUNG
+  amount      Float
+  dueDate     DateTime?
+  paidAt      DateTime?
+  note        String?   @db.Text
+  createdBy   String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project     Project   @relation(fields: [projectId], references: [id])
+  user        User      @relation(fields: [createdBy], references: [id])
+
+  @@index([projectId])
+  @@map("payments")
+}
+
+model PhaseLog {
+  id          String        @id @default(cuid())
+  projectId   String
+  fromPhase   ProjectPhase
+  toPhase     ProjectPhase
+  userId      String
+  comment     String?       @db.Text
+  createdAt   DateTime      @default(now())
+
+  project     Project       @relation(fields: [projectId], references: [id])
+  user        User          @relation(fields: [userId], references: [id])
+
+  @@map("phase_logs")
+}
+
+// ==========================================
+// TIME TRACKING
+// ==========================================
+
+enum WorkArea {
+  AV
+  CNC
+  WERKSTATT
+  MONTAGE
+  NACHARBEIT
+  BUERO
+}
+
+model TimeEntry {
+  id          String    @id @default(cuid())
+  projectId   String
+  userId      String
+  area        WorkArea
+  hours       Float
+  date        DateTime  @default(now())
+  startTime   DateTime?
+  endTime     DateTime?
+  isRunning   Boolean   @default(false)
+  note        String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  project     Project   @relation(fields: [projectId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([projectId])
+  @@index([userId])
+  @@index([date])
+  @@index([isRunning])
+  @@map("time_entries")
+}
+
+// ==========================================
+// DOCUMENTS
+// ==========================================
+
+enum DocumentType {
+  AUFMASSBLATT
+  SKIZZE
+  CAD_ENTWURF
+  ANGEBOT_DOK
+  AUFTRAGSBESTAETIGUNG
+  AZ_RECHNUNG
+  STUECKLISTE
+  FOTO_VORHER
+  FOTO_NACHHER
+  MONTAGEPROTOKOLL
+  ABNAHMEPROTOKOLL
+  SCHLUSSRECHNUNG
+  MAHNUNG
+  SONSTIGES
+}
+
+model Document {
+  id            String        @id @default(cuid())
+  projectId     String
+  type          DocumentType
+  name          String
+  urlOrPath     String
+  phase         ProjectPhase
+  uploadedById  String
+  fileSize      Int?
+  mimeType      String?
+  createdAt     DateTime      @default(now())
+
+  project       Project       @relation(fields: [projectId], references: [id])
+  uploadedBy    User          @relation(fields: [uploadedById], references: [id])
+
+  @@index([projectId])
+  @@map("documents")
+}
+
+// ==========================================
+// NOTES
+// ==========================================
+
+enum NoteType {
+  INTERN
+  ANRUF
+  KUNDE
+}
+
+model Note {
+  id          String    @id @default(cuid())
+  customerId  String?
+  projectId   String?
+  type        NoteType  @default(INTERN)
+  text        String    @db.Text
+  userId      String
+  createdAt   DateTime  @default(now())
+
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  project     Project?  @relation(fields: [projectId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@index([customerId])
+  @@index([projectId])
+  @@map("notes")
+}
+
+// ==========================================
+// MONTAGE & ABNAHME
+// ==========================================
+
+enum ReportType {
+  MONTAGE
+  ABNAHME
+}
+
+model MontageReport {
+  id              String      @id @default(cuid())
+  projectId       String
+  type            ReportType  @default(MONTAGE)
+  date            DateTime
+  teamMembers     Json?       // ["Robin", "Philipp"]
+  checklist       Json?       // [{key, label, checked, note}]
+  defects         String?     @db.Text
+  customerNote    String?     @db.Text
+  signatureData   String?     @db.MediumText  // Base64 PNG
+  signatureCustomer String?   @db.MediumText  // Kunde unterschreibt
+  photos          Json?       // ["url1", "url2"]
+  // Abnahme-spezifisch
+  abnahmeOk       Boolean?    @default(false)  // Kunde hat abgenommen
+  restarbeiten     String?     @db.Text         // Restarbeiten-Notiz
+  invoiceTriggered Boolean?   @default(false)  // Rechnung ausgelöst?
+  invoiceTriggeredAt DateTime?
+  userId          String
+  createdAt       DateTime    @default(now())
+
+  project         Project     @relation(fields: [projectId], references: [id])
+  createdBy       User        @relation(fields: [userId], references: [id])
+
+  @@map("montage_reports")
+}
+
+// ==========================================
+// CALLS (Reventix Action URLs)
+// ==========================================
+
+enum CallDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model CallLog {
+  id            String        @id @default(cuid())
+  customerId    String?
+  callerNumber  String
+  targetNumber  String
+  direction     CallDirection
+  startTime     DateTime
+  endTime       DateTime?
+  duration      Int?
+  sipUser       String?
+  source        String        @default("action_url")
+  createdAt     DateTime      @default(now())
+
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  notes         CallNote[]
+
+  @@index([callerNumber])
+  @@index([targetNumber])
+  @@index([customerId])
+  @@index([startTime])
+  @@map("call_logs")
+}
+
+model CallNote {
+  id          String    @id @default(cuid())
+  callLogId   String
+  text        String    @db.Text
+  userId      String
+  createdAt   DateTime  @default(now())
+
+  callLog     CallLog   @relation(fields: [callLogId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+
+  @@map("call_notes")
+}
+
+// ==========================================
+// SYNC LOG
+// ==========================================
+
+model SyncLog {
+  id          String    @id @default(cuid())
+  type        String
+  status      String
+  recordCount Int       @default(0)
+  details     String?   @db.Text
+  createdAt   DateTime  @default(now())
+
+  @@map("sync_logs")
+}
+
+// ==========================================
+// COMPANY CLOSED DAYS (Betriebsferien, Brückentage)
+// ==========================================
+
+enum ClosedDayType {
+  BETRIEBSURLAUB
+  BRUECKENTAG
+  SONSTIGES
+}
+
+model CompanyClosedDay {
+  id          String        @id @default(cuid())
+  date        DateTime      @db.Date
+  type        ClosedDayType
+  name        String
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+
+  @@unique([date])
+  @@index([date])
+  @@map("company_closed_days")
+}
+
+// ==========================================
+// KALKULATIONS-PARAMETER (Admin-konfigurierbar)
+// ==========================================
+
+model CalcParams {
+  id                  String   @id @default(cuid())
+  name                String   @default("Standard")
+  isActive            Boolean  @default(true)
+  // RSO / Material
+  rsoDefaultFaktor    Float    @default(2.7)
+  bearbeitungProTeil  Float    @default(12)     // € pro Teil
+  lackierungProQm     Float    @default(70)     // € pro m²
+  lackPauschale       Float    @default(80)
+  sockelProTeil       Float    @default(30)     // € pro Teil
+  horatecZuschlag     Float    @default(1.2)    // Faktor (20%)
+  // Material Zusatz Faktor
+  materialFaktor      Float    @default(1.35)
+  // Stundensätze
+  stundeAufmass       Float    @default(95)
+  stundeFahrtAufmass  Float    @default(95)
+  stundeGeselle       Float    @default(80)
+  stundeAzubi         Float    @default(36)
+  stundeBeladen       Float    @default(116)
+  stundeFahrtMontage  Float    @default(116)
+  stundeMeister       Float    @default(80)
+  stundeHelfer        Float    @default(36)
+  // Kilometer
+  spritPreisLiter     Float    @default(1.90)
+  verbrauchPro100km   Float    @default(9)
+  allgFzgKosten       Float    @default(0.25)
+  kmSatz              Float    @default(0.421)  // berechnet
+  // Zuschläge
+  wagnisGewinn        Float    @default(1.15)   // 15% W&G
+  mwst                Float    @default(1.19)   // 19% MwSt
+  // LED/Zubehör Standardpreise
+  ledStandard         Float    @default(60)
+  lWinkelStandard     Float    @default(20)
+  garderobeStandard   Float    @default(65)
+  // Timestamps
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("calc_params")
+}
+
+// ==========================================
+// PROJEKT-KALKULATION
+// ==========================================
+
+model ProjectCalc {
+  id              String   @id @default(cuid())
+  projectId       String
+  version         Int      @default(1)
+  // RSO Material
+  rsoBetrag       Float    @default(0)
+  rsoFaktor       Float    @default(2.7)
+  aufpreisSpezial Float    @default(0)
+  // Bearbeitung
+  bearbeitungTeile    Int   @default(0)
+  bearbeitungSatz     Float @default(12)
+  // Lackierung
+  lackQm              Float @default(0)
+  lackSatz            Float @default(70)
+  lackBrutto          Boolean @default(false)  // true=brutto, false=netto
+  lackPauschale       Float @default(80)
+  // Sockel/Passleisten
+  sockelTeile         Int   @default(0)
+  sockelSatz          Float @default(30)
+  // Horatec
+  horatecBetrag       Float @default(0)
+  horatecFaktor       Float @default(1.2)
+  // Summe 1
+  summe1              Float @default(0)
+  // Materialkosten Zusatz
+  matSpiegel          Float @default(0)
+  matLed              Float @default(0)
+  matLWinkel          Float @default(0)
+  matGarderobe        Float @default(0)
+  matSonstiges1       Float @default(0)
+  matSonstiges1Name   String? @default("")
+  matSonstiges2       Float @default(0)
+  matSonstiges2Name   String? @default("")
+  matSonstiges3       Float @default(0)
+  matSonstiges3Name   String? @default("")
+  ekNetto             Float @default(0)
+  materialFaktor      Float @default(1.35)
+  summe2              Float @default(0)
+  // Arbeitszeiten
+  stundenAufmass      Float @default(0)
+  stundenFahrtAufmass Float @default(0)
+  kmAufmass           Float @default(0)
+  stundenGeselle      Float @default(0)
+  stundenAzubi        Float @default(0)
+  stundenBeladen      Float @default(1)
+  stundenFahrtMontage Float @default(0)
+  stundenMeister      Float @default(0)
+  stundenHelfer1      Float @default(0)
+  stundenHelfer2      Float @default(0)
+  kmMontageTag1       Float @default(0)
+  kmMontageTag2       Float @default(0)
+  // Sätze (kopiert bei Erstellung aus CalcParams)
+  satzAufmass         Float @default(95)
+  satzFahrtAufmass    Float @default(95)
+  satzGeselle         Float @default(80)
+  satzAzubi           Float @default(36)
+  satzBeladen         Float @default(116)
+  satzFahrtMontage    Float @default(116)
+  satzMeister         Float @default(80)
+  satzHelfer          Float @default(36)
+  kmSatz              Float @default(0.421)
+  summe3              Float @default(0)
+  // Ergebnis
+  summeOhneZuschlag   Float @default(0)
+  wagnisGewinn        Float @default(1.15)
+  nettoAngebot        Float @default(0)
+  mwst                Float @default(1.19)
+  bruttoAngebot       Float @default(0)
+  // Meta
+  createdBy           String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  project             Project  @relation(fields: [projectId], references: [id])
+
+  @@index([projectId])
+  @@map("project_calcs")
+}
