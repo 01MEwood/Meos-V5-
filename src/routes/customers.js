@@ -4,7 +4,81 @@ const { authenticate, requireRole, canRead } = require('../middleware/auth');
 
 const router = express.Router();
 
-// All customer routes require auth
+
+// GET /api/customers/:id/card - Server-rendered customer info card (token via ?t= query)
+// MUST come before router.use(authenticate) so we can use our own query-token auth
+router.get('/:id/card', async (req, res) => {
+  try {
+    const token = req.query.t || '';
+    if (!token) return res.status(401).type('html').send('<h2>Token fehlt</h2>');
+    const decoded = jwtLib.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+  } catch (e) {
+    return res.status(401).type('html').send('<h2>Ungültiges Token</h2>');
+  }
+
+  try {
+    const c = await req.prisma.customer.findUnique({
+      where: { id: req.params.id },
+      include: {
+        notes: { take: 5, orderBy: { createdAt: 'desc' }, include: { user: { select: { name: true } } } },
+        projects: { take: 8, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, phase: true, status: true, montageDate: true } }
+      }
+    });
+    if (!c) return res.status(404).type('html').send('<h2>Kunde nicht gefunden</h2>');
+
+    const recentCalls = await req.prisma.callLog.findMany({
+      where: { customerId: c.id },
+      take: 5,
+      orderBy: { startTime: 'desc' }
+    });
+
+    const fmtDate = d => new Date(d).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
+    const fmtTime = d => new Date(d).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+    const tag = (t) => '<span style="display:inline-block;padding:2px 8px;background:#e0e7ff;color:#3730a3;border-radius:10px;font-size:11px;margin:2px 4px 2px 0;">' + t + '</span>';
+    const tags = c.tags ? (Array.isArray(c.tags) ? c.tags : []) : [];
+
+    const html = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>' + c.firstName + ' ' + (c.lastName||'') + ' – MEOS Kunde</title>' +
+      '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#f5f0eb;padding:20px;color:#1a1a1a;}' +
+      '.card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);padding:24px;margin-bottom:16px;}' +
+      'h1{font-size:26px;color:#0f172a;margin-bottom:4px;}.company{color:#64748b;font-size:15px;margin-bottom:12px;}' +
+      '.section{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;}' +
+      '.row{display:flex;gap:8px;margin-bottom:6px;font-size:14px;}.label{color:#94a3b8;min-width:90px;}.val{color:#0f172a;font-weight:500;}' +
+      'a{color:#3b82f6;text-decoration:none;}a:hover{text-decoration:underline;}' +
+      '.note{padding:10px;border-left:3px solid #c4650f;margin-bottom:8px;background:#fdf6ec;border-radius:0 6px 6px 0;}' +
+      '.proj{display:flex;justify-content:space-between;padding:8px 10px;background:#f8fafc;border-radius:6px;margin-bottom:6px;font-size:13px;}' +
+      '.phase{padding:2px 8px;background:#e2e8f0;border-radius:10px;font-size:11px;font-weight:600;color:#475569;}' +
+      '.callrow{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;color:#475569;}' +
+      '</style></head><body>' +
+      '<div class="card">' +
+      '<h1>' + c.firstName + ' ' + (c.lastName||'') + '</h1>' +
+      (c.company ? '<div class="company">' + c.company + '</div>' : '') +
+      (tags.length ? '<div style="margin-bottom:12px;">' + tags.map(tag).join('') + '</div>' : '') +
+      (c.email   ? '<div class="row"><span class="label">📧 E-Mail</span><a class="val" href="mailto:' + c.email + '">' + c.email + '</a></div>' : '') +
+      (c.phone   ? '<div class="row"><span class="label">☎ Telefon</span><a class="val" href="tel:' + c.phone + '">' + c.phone + '</a></div>' : '') +
+      (c.mobile  ? '<div class="row"><span class="label">📱 Mobil</span><a class="val" href="tel:' + c.mobile + '">' + c.mobile + '</a></div>' : '') +
+      ((c.street||c.city) ? '<div class="row"><span class="label">📍 Adresse</span><span class="val">' + (c.street||'') + ((c.zip||c.city) ? ', ' + (c.zip||'') + ' ' + (c.city||'') : '') + '</span></div>' : '') +
+      (c.partnerName ? '<div class="row"><span class="label">👥 Partner</span><span class="val">' + c.partnerName + (c.partnerPhone ? ' · ' + c.partnerPhone : '') + '</span></div>' : '') +
+      (c.info    ? '<div class="row" style="margin-top:10px;"><span class="label">ℹ️ Notiz</span><span class="val" style="white-space:pre-wrap;">' + (c.info||'') + '</span></div>' : '') +
+      '</div>' +
+      (c.projects.length ? '<div class="card"><div class="section">Projekte (' + c.projects.length + ')</div>' +
+        c.projects.map(p => '<div class="proj"><span><strong>' + p.name + '</strong>' + (p.montageDate ? ' · Montage ' + fmtDate(p.montageDate) : '') + '</span><span class="phase">' + p.phase + '</span></div>').join('') +
+        '</div>' : '') +
+      (recentCalls.length ? '<div class="card"><div class="section">Letzte Anrufe (' + recentCalls.length + ')</div>' +
+        recentCalls.map(call => '<div class="callrow"><span>' + (call.direction === 'INBOUND' ? '📞 eingehend' : '📤 ausgehend') + ' · ' + (call.callerNumber||call.targetNumber||'-') + '</span><span>' + fmtDate(call.startTime) + ' ' + fmtTime(call.startTime) + '</span></div>').join('') +
+        '</div>' : '') +
+      (c.notes.length ? '<div class="card"><div class="section">Letzte Notizen (' + c.notes.length + ')</div>' +
+        c.notes.map(n => '<div class="note"><div style="font-size:11px;color:#94a3b8;margin-bottom:4px;font-weight:600;">' + (n.user?.name || 'System') + ' · ' + fmtDate(n.createdAt) + ' ' + fmtTime(n.createdAt) + '</div>' + (n.text||'') + '</div>').join('') +
+        '</div>' : '') +
+      '</body></html>';
+    res.type('html').send(html);
+  } catch (err) {
+    console.error('[CUSTOMER CARD]', err.message);
+    res.status(500).type('html').send('<h2>Fehler</h2><pre>' + err.message + '</pre>');
+  }
+});
+
+// All other customer routes require auth
 router.use(authenticate);
 
 // GET /api/customers - List with search, filter, pagination
@@ -232,77 +306,5 @@ router.get('/tags/all', async (req, res) => {
 });
 
 
-// GET /api/customers/:id/card - Server-rendered customer info card (token via ?t= query)
-router.get('/:id/card', async (req, res, next) => {
-  // Custom auth: token in query (used for window.open from React app)
-  try {
-    const token = req.query.t || '';
-    if (!token) return res.status(401).type('html').send('<h2>Token fehlt</h2>');
-    const decoded = jwtLib.verify(token, process.env.JWT_SECRET);
-    req.user = decoded;
-  } catch (e) {
-    return res.status(401).type('html').send('<h2>Ungültiges Token</h2>');
-  }
-
-  try {
-    const c = await req.prisma.customer.findUnique({
-      where: { id: req.params.id },
-      include: {
-        notes: { take: 5, orderBy: { createdAt: 'desc' }, include: { user: { select: { name: true } } } },
-        projects: { take: 8, orderBy: { createdAt: 'desc' }, select: { id: true, name: true, phase: true, status: true, montageDate: true } }
-      }
-    });
-    if (!c) return res.status(404).type('html').send('<h2>Kunde nicht gefunden</h2>');
-
-    const recentCalls = await req.prisma.callLog.findMany({
-      where: { customerId: c.id },
-      take: 5,
-      orderBy: { startTime: 'desc' }
-    });
-
-    const fmtDate = d => new Date(d).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
-    const fmtTime = d => new Date(d).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
-    const tag = (t) => '<span style="display:inline-block;padding:2px 8px;background:#e0e7ff;color:#3730a3;border-radius:10px;font-size:11px;margin:2px 4px 2px 0;">' + t + '</span>';
-    const tags = c.tags ? (Array.isArray(c.tags) ? c.tags : []) : [];
-
-    const html = '<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>' + c.firstName + ' ' + c.lastName + ' – MEOS Kunde</title>' +
-      '<style>*{margin:0;padding:0;box-sizing:border-box;}body{font-family:-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;background:#f5f0eb;padding:20px;color:#1a1a1a;}' +
-      '.card{background:#fff;border-radius:12px;box-shadow:0 2px 12px rgba(0,0,0,0.06);padding:24px;margin-bottom:16px;}' +
-      'h1{font-size:26px;color:#0f172a;margin-bottom:4px;}.company{color:#64748b;font-size:15px;margin-bottom:12px;}' +
-      '.section{font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1.2px;margin-bottom:10px;}' +
-      '.row{display:flex;gap:8px;margin-bottom:6px;font-size:14px;}.label{color:#94a3b8;min-width:90px;}.val{color:#0f172a;font-weight:500;}' +
-      'a{color:#3b82f6;text-decoration:none;}a:hover{text-decoration:underline;}' +
-      '.note{padding:10px;border-left:3px solid #c4650f;margin-bottom:8px;background:#fdf6ec;border-radius:0 6px 6px 0;}' +
-      '.proj{display:flex;justify-content:space-between;padding:8px 10px;background:#f8fafc;border-radius:6px;margin-bottom:6px;font-size:13px;}' +
-      '.phase{padding:2px 8px;background:#e2e8f0;border-radius:10px;font-size:11px;font-weight:600;color:#475569;}' +
-      '.callrow{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f1f5f9;font-size:13px;color:#475569;}' +
-      '</style></head><body>' +
-      '<div class="card">' +
-      '<h1>' + c.firstName + ' ' + (c.lastName || '') + '</h1>' +
-      (c.company ? '<div class="company">' + c.company + '</div>' : '') +
-      (tags.length ? '<div style="margin-bottom:12px;">' + tags.map(tag).join('') + '</div>' : '') +
-      (c.email   ? '<div class="row"><span class="label">📧 E-Mail</span><a class="val" href="mailto:' + c.email + '">' + c.email + '</a></div>' : '') +
-      (c.phone   ? '<div class="row"><span class="label">☎️ Telefon</span><a class="val" href="tel:' + c.phone + '">' + c.phone + '</a></div>' : '') +
-      (c.mobile  ? '<div class="row"><span class="label">📱 Mobil</span><a class="val" href="tel:' + c.mobile + '">' + c.mobile + '</a></div>' : '') +
-      (c.street||c.city ? '<div class="row"><span class="label">📍 Adresse</span><span class="val">' + (c.street||'') + (c.zip||c.city ? ', ' + (c.zip||'') + ' ' + (c.city||'') : '') + '</span></div>' : '') +
-      (c.partnerName ? '<div class="row"><span class="label">👥 Partner</span><span class="val">' + c.partnerName + (c.partnerPhone ? ' · ' + c.partnerPhone : '') + '</span></div>' : '') +
-      (c.info    ? '<div class="row" style="margin-top:10px;"><span class="label">ℹ️ Notiz</span><span class="val" style="white-space:pre-wrap;">' + (c.info||'') + '</span></div>' : '') +
-      '</div>' +
-      (c.projects.length ? '<div class="card"><div class="section">Projekte (' + c.projects.length + ')</div>' +
-        c.projects.map(p => '<div class="proj"><span><strong>' + p.name + '</strong>' + (p.montageDate ? ' · Montage ' + fmtDate(p.montageDate) : '') + '</span><span class="phase">' + p.phase + '</span></div>').join('') +
-        '</div>' : '') +
-      (recentCalls.length ? '<div class="card"><div class="section">Letzte Anrufe (' + recentCalls.length + ')</div>' +
-        recentCalls.map(call => '<div class="callrow"><span>' + (call.direction === 'INBOUND' ? '📞 eingehend' : '📤 ausgehend') + ' · ' + (call.callerNumber||call.targetNumber||'-') + '</span><span>' + fmtDate(call.startTime) + ' ' + fmtTime(call.startTime) + '</span></div>').join('') +
-        '</div>' : '') +
-      (c.notes.length ? '<div class="card"><div class="section">Letzte Notizen (' + c.notes.length + ')</div>' +
-        c.notes.map(n => '<div class="note"><div style="font-size:11px;color:#94a3b8;margin-bottom:4px;font-weight:600;">' + (n.user?.name || 'System') + ' · ' + fmtDate(n.createdAt) + ' ' + fmtTime(n.createdAt) + '</div>' + (n.text||'') + '</div>').join('') +
-        '</div>' : '') +
-      '</body></html>';
-    res.type('html').send(html);
-  } catch (err) {
-    console.error('[CUSTOMER CARD]', err.message);
-    res.status(500).type('html').send('<h2>Fehler</h2><pre>' + err.message + '</pre>');
-  }
-});
 
 module.exports = router;
