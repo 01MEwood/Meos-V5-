@@ -12,3 +12,19 @@
 
 ### Known issues (frontend rebuild required)
 - Other parts of the UI (time tracking, calendar, project timestamps) may still show -2h because the bundled React code uses `.toISOString().substring(0,16)` patterns that ignore timezone. Frontend source is **not** in this snapshot — only the compiled bundle in `public/assets/`.
+
+## 2026-04-29 (later) — WhatsApp integration
+
+### Added
+- **Prisma**: `Message` model with `MessageChannel` (WHATSAPP/EMAIL/SMS) + `MessageDirection` enums; `messages` relation on Customer
+- **Endpoints** (`src/routes/messages.js`):
+  - `POST /api/messages/whatsapp/inbound` — webhook from Baileys bridge (X-Shared-Secret auth)
+  - `POST /api/messages/whatsapp/send` — proxies to bridge for outbound messages (JWT auth)
+  - `GET  /api/messages/customer/:id` — list a customer's messages
+- **Baileys microservice** (`deploy/meos-whatsapp/`): standalone Docker image that pairs as a WhatsApp Business linked-device, captures all in/outbound messages, and forwards them to MEOS. Exposes `/qr` for pairing, `/status`, `/send`.
+- **Customer card extended**: WhatsApp section with chat bubbles + reply textarea (sends via the bridge)
+- **Self-match filter** via `OWN_NUMBERS` env (default includes 4971929357200 / 071929357200)
+
+### Build pipeline
+- Custom image tag `mariomeosv40/meos:patched`
+- `pull_policy: never` in compose to prevent overwriting in-place patches with upstream `:latest`

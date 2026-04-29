@@ -32,6 +32,11 @@ router.get('/:id/card', async (req, res) => {
       take: 5,
       orderBy: { startTime: 'desc' }
     });
+    const waMessages = await req.prisma.message.findMany({
+      where: { customerId: c.id, channel: 'WHATSAPP' },
+      take: 12,
+      orderBy: { sentAt: 'desc' }
+    });
 
     const fmtDate = d => new Date(d).toLocaleDateString('de-DE', { timeZone: 'Europe/Berlin' });
     const fmtTime = d => new Date(d).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
@@ -64,7 +69,20 @@ router.get('/:id/card', async (req, res) => {
       (c.projects.length ? '<div class="card"><div class="section">Projekte (' + c.projects.length + ')</div>' +
         c.projects.map(p => '<div class="proj"><span><strong>' + p.name + '</strong>' + (p.montageDate ? ' · Montage ' + fmtDate(p.montageDate) : '') + '</span><span class="phase">' + p.phase + '</span></div>').join('') +
         '</div>' : '') +
-      (recentCalls.length ? '<div class="card"><div class="section">Letzte Anrufe (' + recentCalls.length + ')</div>' +
+      (waMessages.length ? '<div class="card"><div class="section">💬 WhatsApp (' + waMessages.length + ')</div>' +
+        '<div style="max-height:380px;overflow-y:auto;padding:4px;">' +
+        waMessages.slice().reverse().map(m => {
+          const isIn = m.direction === 'INBOUND';
+          const align = isIn ? 'flex-start' : 'flex-end';
+          const bg = isIn ? '#fff' : '#dcf8c6';
+          const border = isIn ? '#e5e5e5' : '#bce39a';
+          return '<div style="display:flex;justify-content:' + align + ';margin-bottom:6px;"><div style="max-width:75%;background:' + bg + ';border:1px solid ' + border + ';border-radius:8px;padding:6px 10px;font-size:13px;color:#0f172a;">' + (m.mediaType ? '<div style="color:#64748b;font-size:11px;margin-bottom:2px;">📎 ' + m.mediaType + '</div>' : '') + (m.body || '<i style="color:#94a3b8;">(leer)</i>').replace(/</g,'&lt;').replace(/\n/g,'<br>') + '<div style="font-size:10px;color:#94a3b8;margin-top:2px;text-align:right;">' + fmtTime(m.sentAt) + ' · ' + fmtDate(m.sentAt) + (m.status ? ' · ' + m.status : '') + '</div></div></div>';
+        }).join('') +
+        '</div>' +
+        '<div style="margin-top:10px;border-top:1px solid #e5e5e5;padding-top:10px;display:flex;gap:6px;"><textarea id="waText" placeholder="Antwort schreiben…" style="flex:1;padding:8px;border:1px solid #e5e5e5;border-radius:6px;font-family:inherit;resize:vertical;min-height:50px;"></textarea><button onclick="sendWa()" style="padding:8px 14px;background:#25d366;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Senden</button></div>' +
+        '<script>function sendWa(){const t=document.getElementById("waText").value.trim();if(!t)return;const tok=new URLSearchParams(location.search).get("t");fetch("/api/messages/whatsapp/send?t="+encodeURIComponent(tok),{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({to:"' + (c.phone || c.mobile || '') + '",body:t})}).then(r=>r.json()).then(j=>{if(j.ok){document.getElementById("waText").value="";setTimeout(()=>location.reload(),700);}else alert("Fehler: "+JSON.stringify(j));}).catch(e=>alert(e.message));}</script>' +
+        '</div>' : '') +
+            (recentCalls.length ? '<div class="card"><div class="section">Letzte Anrufe (' + recentCalls.length + ')</div>' +
         recentCalls.map(call => '<div class="callrow"><span>' + (call.direction === 'INBOUND' ? '📞 eingehend' : '📤 ausgehend') + ' · ' + (call.callerNumber||call.targetNumber||'-') + '</span><span>' + fmtDate(call.startTime) + ' ' + fmtTime(call.startTime) + '</span></div>').join('') +
         '</div>' : '') +
       (c.notes.length ? '<div class="card"><div class="section">Letzte Notizen (' + c.notes.length + ')</div>' +

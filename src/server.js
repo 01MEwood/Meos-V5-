@@ -18,6 +18,7 @@ const distanceRoutes = require('./routes/distance');
 const employeeRoutes = require('./routes/employees');
 const calendarRoutes = require('./routes/calendar');
 const calcRoutes = require('./routes/calc');
+const messagesRoutes = require('./routes/messages');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -70,6 +71,7 @@ app.use('/api/distance', distanceRoutes);
 app.use('/api/employees', employeeRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/calc', calcRoutes);
+app.use('/api/messages', messagesRoutes);
 
 // Start FluentCRM auto-sync cron
 syncRoutes.startCron(prisma);

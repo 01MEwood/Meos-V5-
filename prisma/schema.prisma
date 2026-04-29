@@ -92,6 +92,7 @@ model Customer {
   projects      Project[]
   notes         Note[]
   calls         CallLog[]
+  messages      Message[]
 
   @@index([phone])
   @@index([mobile])
@@ -587,4 +588,42 @@ model ProjectCalc {
 
   @@index([projectId])
   @@map("project_calcs")
+}
+
+enum MessageChannel {
+  WHATSAPP
+  EMAIL
+  SMS
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+model Message {
+  id          String           @id @default(cuid())
+  customerId  String?
+  channel     MessageChannel
+  direction   MessageDirection
+  fromAddr    String
+  toAddr      String
+  subject     String?
+  body        String           @db.Text
+  bodyHtml    String?          @db.Text
+  mediaUrl    String?
+  mediaType   String?
+  sentAt      DateTime
+  externalId  String?
+  threadId    String?
+  status      String?
+  source      String?
+  meta        Json?
+  createdAt   DateTime         @default(now())
+  customer    Customer?        @relation(fields: [customerId], references: [id])
+
+  @@index([customerId, sentAt])
+  @@index([externalId])
+  @@index([channel, direction, sentAt])
+  @@map("messages")
 }

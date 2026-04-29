@@ -18,10 +18,10 @@ services:
       retries: 5
 
   meos:
-    image: mariomeosv40/meos:latest
+    image: mariomeosv40/meos:patched
     container_name: meos-app
     init: true
-    pull_policy: always
+    pull_policy: never
     depends_on:
       db:
         condition: service_healthy
@@ -36,6 +36,8 @@ services:
       FLUENTCRM_URL: ${FLUENTCRM_URL}
       FLUENTCRM_API_USER: ${FLUENTCRM_API_USER}
       FLUENTCRM_API_PASS: ${FLUENTCRM_API_PASS}
+      WHATSAPP_SHARED_SECRET: ${WHATSAPP_SHARED_SECRET}
+      OWN_NUMBERS: ${OWN_NUMBERS}
     restart: unless-stopped
     volumes:
       - meos-uploads:/app/uploads
