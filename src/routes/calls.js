@@ -584,7 +584,7 @@ router.get('/', authenticate, async (req, res) => {
       take: parseInt(limit),
       orderBy: { startTime: 'desc' },
       include: {
-        customer: { select: { firstName: true, lastName: true, company: true } },
+        customer: { select: { id: true, firstName: true, lastName: true, company: true } },
         notes: { include: { user: { select: { name: true } } } }
       }
     });
